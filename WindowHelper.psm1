@@ -599,7 +599,7 @@ namespace Utils {
 		public extern static int GetLastError();
 
 		[DllImport("user32.dll",CharSet=CharSet.Auto, CallingConvention=CallingConvention.StdCall)]
-		public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint cButtons, uint dwExtraInfo);
+		public static extern void mouse_event(uint dwFlags, int dx, int dy, uint cButtons, uint dwExtraInfo);
                 //  http://msdn.microsoft.com/en-us/library/windows/desktop/ms646260(v=vs.85).aspx
 
 		[DllImport("user32.dll", SetLastError = true)]
