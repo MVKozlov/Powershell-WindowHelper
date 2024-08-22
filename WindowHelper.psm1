@@ -3,6 +3,8 @@
 $definition = @'
 using System;
 using System.Collections.Generic;
+using System.IO;
+using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
 using System.Text;
 namespace Utils {
@@ -503,7 +505,7 @@ namespace Utils {
 		public static extern bool EnumThreadWindows(uint dwThreadId, Win32Callback callback, IntPtr lParam);
 		[DllImport("user32.dll")]
         private static extern int EnumWindows(Win32Callback callPtr, IntPtr lParam);
-		
+
         // When you don't want the ProcessId, use this overload and pass IntPtr.Zero for the second parameter
         [DllImport("user32.dll")]
 		public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
@@ -598,6 +600,10 @@ namespace Utils {
 		[DllImport("kernel32")]
 		public extern static int GetLastError();
 
+		public static string GetLastErrorMessage() {
+		   return (new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastWin32Error())).Message;
+        }
+
 		[DllImport("user32.dll",CharSet=CharSet.Auto, CallingConvention=CallingConvention.StdCall)]
 		public static extern void mouse_event(uint dwFlags, int dx, int dy, uint cButtons, uint dwExtraInfo);
                 //  http://msdn.microsoft.com/en-us/library/windows/desktop/ms646260(v=vs.85).aspx
@@ -634,6 +640,53 @@ namespace Utils {
 			else
 				return GetWindowLongPtr32(hWnd, nIndex);
 		}
+
+		//Console
+		[DllImport("kernel32.dll",
+			EntryPoint = "GetStdHandle",
+			SetLastError = true,
+			CharSet = CharSet.Auto,
+		    CallingConvention = CallingConvention.StdCall)]
+		private static extern IntPtr GetStdHandle(int nStdHandle);
+
+		[DllImport("kernel32", SetLastError = true)]
+		static extern bool AttachConsole(uint dwProcessId);
+
+		[DllImport("kernel32.dll",
+			EntryPoint = "AllocConsole",
+			SetLastError = true,
+			CharSet = CharSet.Auto,
+			CallingConvention = CallingConvention.StdCall)]
+		public static extern int AllocConsole();
+
+		[DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
+		static extern bool FreeConsole();
+
+		private const int STD_OUTPUT_HANDLE = -11;
+		private const int STD_ERROR_HANDLE = -12;
+		private static bool _consoleAttached = false;
+	    public static bool AttachConsoleEx(uint prId) {
+            FreeConsole();
+            if (AttachConsole(prId)) {
+                _consoleAttached = true;
+                IntPtr stdHandle = GetStdHandle(STD_ERROR_HANDLE); // must be error dunno why
+                SafeFileHandle safeFileHandle = new SafeFileHandle(stdHandle, true);
+                FileStream fileStream = new FileStream(safeFileHandle, FileAccess.Write);
+                Encoding encoding = Encoding.ASCII;
+                StreamWriter standardOutput = new StreamWriter(fileStream, encoding);
+                standardOutput.AutoFlush = true;
+                Console.SetOut(standardOutput);
+                return true;
+            }
+            else return false;
+        }
+        public static void DetachConsole() {
+           if (_consoleAttached) {
+               _consoleAttached = false;
+               FreeConsole(); // TODO: reattach local console
+           }
+        }
+
 	}
 }
 '@
@@ -903,9 +956,21 @@ param(
 	}
 }
 
+# Хреновенько работает :( в другую консоль, конечно, пишется что надо,
+# но PS схлопывается, потому как свою консоль теряет когда аттачится к CMD
+# $p = get-process cmd; Connect-Console $p.id; [Console]::Write('test'); Disconnect-Console
+
+function Connect-Console($ProcessID) {
+	[Utils.WindowHelper]::AttachConsoleEx($ProcessID)
+}
+function Disconnect-Console {
+    [Utils.WindowHelper]::DetachConsole()
+    [Utils.WindowHelper]::AllocConsole()
+}
+
 Export-ModuleMember -Function Get-WindowInfo, Get-ThreadWindows, Get-ChildWindows,
 			Get-Window, Get-MainWindow, Get-WindowText, Set-WindowText,
 			Get-ForegroundWindow, Set-ForegroundWindow,  Show-Window,  Get-LastActivePopup,
 			Send-WindowMessage, Send-CloseWindowMessage,
 			Get-WindowRect, Get-WindowPlacement, Get-WindowStyle, Get-WindowParent,
-			Invoke-MouseEvent
+			Invoke-MouseEvent, Connect-Console, Disconnect-Console
